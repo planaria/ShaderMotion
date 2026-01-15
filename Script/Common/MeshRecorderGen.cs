@@ -171,6 +171,7 @@ public class MeshRecorderGen {
 				Morph.GetBlendShapeVertices(srcMesh, shapes, dstDV, srcDV);
 			mesh.AddBlendShapeFrame(name, 100, dstDV, null, null);
 		}
+		mesh.AddBlendShapeFrame("vrc.v_sil", 100, new Vector3[mesh.vertexCount], null, null);
 		return bones.ToArray();
 	}
 /*

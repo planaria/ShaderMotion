@@ -11,6 +11,7 @@ namespace ShaderMotion
         private string outputPath = "Assets/Animations/ConvertedAnimation.anim";
         private bool applyHumanPose = true;
         private bool includeBlendShapes = true;
+        private SkinnedMeshRenderer shapeRenderer;
 
         [MenuItem("Window/ShaderMotion/Animation Converter")]
         public static void ShowWindow()
@@ -57,6 +58,11 @@ namespace ShaderMotion
 
             applyHumanPose = EditorGUILayout.Toggle("Apply Human Pose", applyHumanPose);
             includeBlendShapes = EditorGUILayout.Toggle("Include Blend Shapes", includeBlendShapes);
+            
+            if (includeBlendShapes)
+            {
+                shapeRenderer = EditorGUILayout.ObjectField("Shape Renderer", shapeRenderer, typeof(SkinnedMeshRenderer), true) as SkinnedMeshRenderer;
+            }
 
             EditorGUILayout.Space();
 
@@ -103,6 +109,7 @@ namespace ShaderMotion
                 inputFilePath = inputFilePath,
                 applyHumanPose = applyHumanPose,
                 includeBlendShapes = includeBlendShapes,
+                shapeRenderer = shapeRenderer,
                 resolution = new Vector2Int(80, 45),
                 tileSize = new Vector3Int(2, 1, 3),
                 tileRadix = 3

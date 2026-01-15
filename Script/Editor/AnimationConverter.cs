@@ -15,6 +15,7 @@ namespace ShaderMotion
             public string inputFilePath;
             public bool applyHumanPose;
             public bool includeBlendShapes;
+            public SkinnedMeshRenderer shapeRenderer;
             public Vector2Int resolution;
             public Vector3Int tileSize;
             public int tileRadix;
@@ -76,19 +77,13 @@ namespace ShaderMotion
                 for (int i = 0; i < 4; i++)
                     rootRotationCurves[i] = new AnimationCurve();
 
-                if (settings.includeBlendShapes)
+                if (settings.includeBlendShapes && settings.shapeRenderer != null)
                 {
-                    var shapeRenderer = animator.GetComponentsInChildren<SkinnedMeshRenderer>()
-                        .Where(smr => (smr.sharedMesh?.blendShapeCount ?? 0) > 0).FirstOrDefault();
-
-                    if (shapeRenderer)
+                    var mesh = settings.shapeRenderer.sharedMesh;
+                    for (int i = 0; i < mesh.blendShapeCount; i++)
                     {
-                        var mesh = shapeRenderer.sharedMesh;
-                        for (int i = 0; i < mesh.blendShapeCount; i++)
-                        {
-                            var shapeName = mesh.GetBlendShapeName(i);
-                            blendShapeCurves[shapeName] = new AnimationCurve();
-                        }
+                        var shapeName = mesh.GetBlendShapeName(i);
+                        blendShapeCurves[shapeName] = new AnimationCurve();
                     }
                 }
 
@@ -189,21 +184,15 @@ namespace ShaderMotion
                     }
                 }
 
-                // Set blend shape curves
-                if (blendShapeCurves.Count > 0)
+                if (blendShapeCurves.Count > 0 && settings.shapeRenderer != null)
                 {
-                    var shapeRenderer = animator.GetComponentsInChildren<SkinnedMeshRenderer>()
-                        .Where(smr => (smr.sharedMesh?.blendShapeCount ?? 0) > 0).FirstOrDefault();
+                    var rendererPath = AnimationUtility.CalculateTransformPath(settings.shapeRenderer.transform, animator.transform);
 
-                    if (shapeRenderer != null)
+                    foreach (var kvp in blendShapeCurves)
                     {
-                        var rendererPath = AnimationUtility.CalculateTransformPath(shapeRenderer.transform, animator.transform);
-                        foreach (var kvp in blendShapeCurves)
+                        if (kvp.Value.keys.Length > 0)
                         {
-                            if (kvp.Value.keys.Length > 0)
-                            {
-                                animationClip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), $"blendShape.{kvp.Key}", kvp.Value);
-                            }
+                            animationClip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), $"blendShape.{kvp.Key}", kvp.Value);
                         }
                     }
                 }

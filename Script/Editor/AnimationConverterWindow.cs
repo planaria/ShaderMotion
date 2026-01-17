@@ -33,7 +33,8 @@ namespace ShaderMotion
             inputFilePath = EditorGUILayout.TextField("Input File", inputFilePath);
             if (GUILayout.Button("Browse", GUILayout.Width(60)))
             {
-                string path = EditorUtility.OpenFilePanel("Select captured animation file", "", "anim_raw");
+                string defaultPath = string.IsNullOrEmpty(inputFilePath) ? "" : System.IO.Path.GetDirectoryName(inputFilePath);
+                string path = EditorUtility.OpenFilePanel("Select captured animation file", defaultPath, "anim_raw");
                 if (!string.IsNullOrEmpty(path))
                 {
                     inputFilePath = path;
@@ -45,7 +46,9 @@ namespace ShaderMotion
             outputPath = EditorGUILayout.TextField("Output Path", outputPath);
             if (GUILayout.Button("Browse", GUILayout.Width(60)))
             {
-                string path = EditorUtility.SaveFilePanelInProject("Save animation", "ConvertedAnimation", "anim", "Save converted animation");
+                string defaultPath = string.IsNullOrEmpty(outputPath) ? "Assets" : System.IO.Path.GetDirectoryName(outputPath);
+                string defaultName = string.IsNullOrEmpty(outputPath) ? "ConvertedAnimation" : System.IO.Path.GetFileNameWithoutExtension(outputPath);
+                string path = EditorUtility.SaveFilePanelInProject("Save animation", defaultName, "anim", "Save converted animation", defaultPath);
                 if (!string.IsNullOrEmpty(path))
                 {
                     outputPath = path;
@@ -115,11 +118,12 @@ namespace ShaderMotion
                 tileRadix = 3
             };
 
-            EditorUtility.DisplayProgressBar("Converting Animation", "Processing frames...", 0.5f);
-
             try
             {
-                var animationClip = AnimationConverter.Convert(settings);
+                var animationClip = AnimationConverter.Convert(settings, (progress, message) =>
+                {
+                    EditorUtility.DisplayProgressBar("Converting Animation", message, progress);
+                });
 
                 if (animationClip != null)
                 {

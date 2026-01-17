@@ -21,7 +21,7 @@ namespace ShaderMotion
             public int tileRadix;
         }
 
-        public static AnimationClip Convert(ConversionSettings settings)
+        public static AnimationClip Convert(ConversionSettings settings, System.Action<float, string> progressCallback = null)
         {
             if (!ValidateSettings(settings))
                 return null;
@@ -94,7 +94,20 @@ namespace ShaderMotion
                 var swingTwists = new Vector3[HumanTrait.BoneCount];
 
                 int frameCount = 0;
+                int totalFrames = 0;
                 CapturedFrame frame;
+
+                // Count total frames first for progress calculation
+                var tempDecoder = new CapturedAnimationDecoder(settings.inputFilePath);
+                using (tempDecoder)
+                {
+                    while (tempDecoder.TryRead(out _))
+                    {
+                        totalFrames++;
+                    }
+                }
+
+                progressCallback?.Invoke(0.1f, "Processing frames...");
 
                 while (decoder.TryRead(out frame))
                 {
@@ -152,6 +165,12 @@ namespace ShaderMotion
                     }
 
                     frameCount++;
+                    
+                    if (totalFrames > 0)
+                    {
+                        var progress = Mathf.Lerp(0.1f, 0.9f, (float)frameCount / totalFrames);
+                        progressCallback?.Invoke(progress, $"Processing frame {frameCount}/{totalFrames}");
+                    }
                 }
 
                 if (frameCount == 0)
@@ -160,6 +179,7 @@ namespace ShaderMotion
                     return null;
                 }
 
+                progressCallback?.Invoke(0.9f, "Finalizing animation...");
                 Debug.Log($"Processed {frameCount} frames successfully");
 
                 // Set animation curves

@@ -93,6 +93,9 @@ namespace ShaderMotion
                 poseHandler.GetHumanPose(ref humanPose);
                 var swingTwists = new Vector3[HumanTrait.BoneCount];
 
+                // Track previous quaternion for continuity correction
+                Quaternion previousRootQuaternion = Quaternion.identity;
+
                 int frameCount = 0;
                 int totalFrames = 0;
                 CapturedFrame frame;
@@ -140,6 +143,15 @@ namespace ShaderMotion
                         AddLinearKey(rootPositionCurves[0], time, rootPos.x);
                         AddLinearKey(rootPositionCurves[1], time, rootPos.y);
                         AddLinearKey(rootPositionCurves[2], time, rootPos.z);
+
+                        float dotProduct = Quaternion.Dot(previousRootQuaternion, rootRot);
+                        if (dotProduct < 0.0f)
+                        {
+                            rootRot = new Quaternion(-rootRot.x, -rootRot.y, -rootRot.z, -rootRot.w);
+                        }
+
+                        // Store current quaternion for next frame comparison
+                        previousRootQuaternion = rootRot;
 
                         AddLinearKey(rootRotationCurves[0], time, rootRot.x);
                         AddLinearKey(rootRotationCurves[1], time, rootRot.y);

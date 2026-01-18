@@ -28,232 +28,267 @@ namespace ShaderMotion
 
             using (var decoder = new CapturedAnimationDecoder(settings.inputFilePath))
             {
-                var animator = settings.targetAvatar.GetComponent<Animator>();
-                if (!animator)
+                Selection.activeTransform = settings.targetAvatar.transform;
+                Unsupported.DuplicateGameObjectsUsingPasteboard();
+                var targetAvatar = Selection.activeTransform;
+
+                targetAvatar.name = settings.targetAvatar.name + "_ConversionTemp";
+                targetAvatar.gameObject.SetActive(true);
+
+                targetAvatar.localPosition = Vector3.zero;
+                targetAvatar.localRotation = Quaternion.identity;
+                targetAvatar.localScale = Vector3.one;
+
+                try
                 {
-                    Debug.LogError("Target avatar must have an Animator component");
-                    return null;
-                }
-
-                if (!animator.avatar)
-                {
-                    Debug.LogError("Animator must have an Avatar assigned");
-                    return null;
-                }
-
-                if (!animator.avatar.isHuman && settings.applyHumanPose)
-                {
-                    Debug.LogError("Cannot apply human pose to non-humanoid avatar");
-                    return null;
-                }
-
-                var skeleton = new Skeleton(animator);
-                var morph = new Morph(animator);
-                var layout = new MotionLayout(skeleton, morph);
-                var motionDecoder = new MotionDecoder(skeleton, morph, layout,
-                    settings.resolution.x, settings.resolution.y,
-                    tileWidth: settings.tileSize.x, tileHeight: settings.tileSize.y,
-                    tileDepth: settings.tileSize.z, tileRadix: settings.tileRadix);
-
-                var animationClip = new AnimationClip();
-                animationClip.frameRate = (float)decoder.FrameRate;
-
-                if (animationClip.frameRate <= 0)
-                {
-                    Debug.LogError("Invalid frame rate in capture file");
-                    return null;
-                }
-
-                // Initialize curves for humanoid animation
-                var muscleCurves = new AnimationCurve[HumanTrait.MuscleCount];
-                var rootPositionCurves = new AnimationCurve[3];
-                var rootRotationCurves = new AnimationCurve[4];
-                var blendShapeCurves = new Dictionary<string, AnimationCurve>();
-
-                for (int i = 0; i < HumanTrait.MuscleCount; i++)
-                    muscleCurves[i] = new AnimationCurve();
-                for (int i = 0; i < 3; i++)
-                    rootPositionCurves[i] = new AnimationCurve();
-                for (int i = 0; i < 4; i++)
-                    rootRotationCurves[i] = new AnimationCurve();
-
-                if (settings.includeBlendShapes && settings.shapeRenderer != null)
-                {
-                    var mesh = settings.shapeRenderer.sharedMesh;
-                    for (int i = 0; i < mesh.blendShapeCount; i++)
+                    var animator = targetAvatar.GetComponent<Animator>();
+                    if (!animator)
                     {
-                        var shapeName = mesh.GetBlendShapeName(i);
-                        blendShapeCurves[shapeName] = new AnimationCurve();
+                        Debug.LogError("Target avatar must have an Animator component");
+                        return null;
                     }
-                }
 
-                // Setup HumanPoseHandler and HumanPose exactly like MotionPlayer
-                var poseHandler = new HumanPoseHandler(animator.avatar, animator.transform);
-                var humanPose = new HumanPose();
-                poseHandler.GetHumanPose(ref humanPose);
-                var swingTwists = new Vector3[HumanTrait.BoneCount];
-
-                // Track previous quaternion for continuity correction
-                Quaternion previousRootQuaternion = Quaternion.identity;
-
-                int frameCount = 0;
-                int totalFrames = 0;
-                CapturedFrame frame;
-
-                // Count total frames first for progress calculation
-                var tempDecoder = new CapturedAnimationDecoder(settings.inputFilePath);
-                using (tempDecoder)
-                {
-                    while (tempDecoder.TryRead(out _))
+                    if (!animator.avatar)
                     {
-                        totalFrames++;
+                        Debug.LogError("Animator must have an Avatar assigned");
+                        return null;
                     }
-                }
 
-                progressCallback?.Invoke(0.1f, "Processing frames...");
-
-                while (decoder.TryRead(out frame))
-                {
-                    var inputTexture = CreateTextureFromFrameData(frame.data, settings.resolution.x, settings.resolution.y);
-                    var processedTexture = ProcessWithVideoDecoder(inputTexture);
-                    var gpuRequest = UnityEngine.Rendering.AsyncGPUReadback.Request(processedTexture);
-                    gpuRequest.WaitForCompletion();
-                    
-                    motionDecoder.Update(gpuRequest, 0);
-                    
-                    Object.DestroyImmediate(inputTexture);
-                    Object.DestroyImmediate(processedTexture);
-
-                    float time = (float)frame.time;
-                    var motions = motionDecoder.motions;
-
-                    if (settings.applyHumanPose)
+                    if (!animator.avatar.isHuman && settings.applyHumanPose)
                     {
-                        // Apply exact same logic as MotionPlayer.ApplyHumanPose()
-                        System.Array.Resize(ref swingTwists, HumanTrait.BoneCount);
-                        for (int i = 0; i < HumanTrait.BoneCount; i++)
-                            swingTwists[i] = motions[i].t;
+                        Debug.LogError("Cannot apply human pose to non-humanoid avatar");
+                        return null;
+                    }
 
-                        HumanPoser.SetBoneSwingTwists(ref humanPose, swingTwists);
-                        HumanPoser.SetHipsPositionRotation(ref humanPose, motions[0].t, motions[0].q, motions[0].s);
+                    var skeleton = new Skeleton(animator);
 
-                        // Record root motion
-                        var (rootPos, rootRot) = HumanPoser.GetRootMotion(ref humanPose, animator);
+                    Debug.Log($"humanScale: {skeleton.humanScale} {animator.humanScale}");
+                    var morph = new Morph(animator);
+                    var layout = new MotionLayout(skeleton, morph);
+                    var motionDecoder = new MotionDecoder(skeleton, morph, layout,
+                        settings.resolution.x, settings.resolution.y,
+                        tileWidth: settings.tileSize.x, tileHeight: settings.tileSize.y,
+                        tileDepth: settings.tileSize.z, tileRadix: settings.tileRadix);
 
-                        AddLinearKey(rootPositionCurves[0], time, rootPos.x);
-                        AddLinearKey(rootPositionCurves[1], time, rootPos.y);
-                        AddLinearKey(rootPositionCurves[2], time, rootPos.z);
+                    var animationClip = new AnimationClip();
+                    animationClip.frameRate = (float)decoder.FrameRate;
 
-                        float dotProduct = Quaternion.Dot(previousRootQuaternion, rootRot);
-                        if (dotProduct < 0.0f)
+                    if (animationClip.frameRate <= 0)
+                    {
+                        Debug.LogError("Invalid frame rate in capture file");
+                        return null;
+                    }
+
+                    // Initialize curves for humanoid animation
+                    var muscleCurves = new AnimationCurve[HumanTrait.MuscleCount];
+                    var rootPositionCurves = new AnimationCurve[3];
+                    var rootRotationCurves = new AnimationCurve[4];
+                    var blendShapeCurves = new Dictionary<string, AnimationCurve>();
+
+                    for (int i = 0; i < HumanTrait.MuscleCount; i++)
+                        muscleCurves[i] = new AnimationCurve();
+                    for (int i = 0; i < 3; i++)
+                        rootPositionCurves[i] = new AnimationCurve();
+                    for (int i = 0; i < 4; i++)
+                        rootRotationCurves[i] = new AnimationCurve();
+
+                    if (settings.includeBlendShapes && settings.shapeRenderer != null)
+                    {
+                        var mesh = settings.shapeRenderer.sharedMesh;
+                        for (int i = 0; i < mesh.blendShapeCount; i++)
                         {
-                            rootRot = new Quaternion(-rootRot.x, -rootRot.y, -rootRot.z, -rootRot.w);
+                            var shapeName = mesh.GetBlendShapeName(i);
+                            blendShapeCurves[shapeName] = new AnimationCurve();
+                        }
+                    }
+
+                    // Setup HumanPoseHandler and HumanPose exactly like MotionPlayer
+                    var poseHandler = new HumanPoseHandler(animator.avatar, animator.transform);
+                    var swingTwists = new Vector3[HumanTrait.BoneCount];
+
+                    // Track previous quaternion for continuity correction
+                    Quaternion previousRootQuaternion = Quaternion.identity;
+
+                    int frameCount = 0;
+                    int totalFrames = 0;
+                    CapturedFrame frame;
+
+                    // Count total frames first for progress calculation
+                    var tempDecoder = new CapturedAnimationDecoder(settings.inputFilePath);
+                    using (tempDecoder)
+                    {
+                        while (tempDecoder.TryRead(out _))
+                        {
+                            totalFrames++;
+                        }
+                    }
+
+                    progressCallback?.Invoke(0.1f, "Processing frames...");
+
+                    while (decoder.TryRead(out frame))
+                    {
+                        var inputTexture = CreateTextureFromFrameData(frame.data, settings.resolution.x, settings.resolution.y);
+                        var processedTexture = ProcessWithVideoDecoder(inputTexture);
+                        var gpuRequest = UnityEngine.Rendering.AsyncGPUReadback.Request(processedTexture);
+                        gpuRequest.WaitForCompletion();
+
+                        motionDecoder.Update(gpuRequest, 0);
+
+                        Object.DestroyImmediate(inputTexture);
+
+                        processedTexture.Release();
+                        Object.DestroyImmediate(processedTexture);
+
+                        float time = (float)frame.time;
+                        var motions = motionDecoder.motions;
+
+                        if (settings.applyHumanPose)
+                        {
+                            // Apply exact same logic as MotionPlayer.ApplyHumanPose()
+                            System.Array.Resize(ref swingTwists, HumanTrait.BoneCount);
+                            for (int i = 0; i < HumanTrait.BoneCount; i++)
+                                swingTwists[i] = motions[i].t;
+
+                            var humanPose = new HumanPose();
+                            poseHandler.GetHumanPose(ref humanPose);
+
+                            HumanPoser.SetBoneSwingTwists(ref humanPose, swingTwists);
+                            poseHandler.SetHumanPose(ref humanPose);
+
+                            var hipsPosition = motions[0].t;
+                            hipsPosition.y -= skeleton.humanScale;
+                            hipsPosition *= animator.humanScale;
+                            hipsPosition.y += animator.humanScale;
+
+                            var hipsTransform = animator.GetBoneTransform(HumanBodyBones.Hips);
+                            hipsTransform.position = hipsPosition;
+                            hipsTransform.rotation = motions[0].q;
+
+                            poseHandler.GetHumanPose(ref humanPose);
+
+                            // Record root motion
+                            var rootPos = humanPose.bodyPosition;
+                            var rootRot = humanPose.bodyRotation;
+
+                            AddLinearKey(rootPositionCurves[0], time, rootPos.x);
+                            AddLinearKey(rootPositionCurves[1], time, rootPos.y);
+                            AddLinearKey(rootPositionCurves[2], time, rootPos.z);
+
+                            float dotProduct = Quaternion.Dot(previousRootQuaternion, rootRot);
+                            if (dotProduct < 0.0f)
+                            {
+                                rootRot = new Quaternion(-rootRot.x, -rootRot.y, -rootRot.z, -rootRot.w);
+                            }
+
+                            // Store current quaternion for next frame comparison
+                            previousRootQuaternion = rootRot;
+
+                            AddLinearKey(rootRotationCurves[0], time, rootRot.x);
+                            AddLinearKey(rootRotationCurves[1], time, rootRot.y);
+                            AddLinearKey(rootRotationCurves[2], time, rootRot.z);
+                            AddLinearKey(rootRotationCurves[3], time, rootRot.w);
+
+                            for (int i = 0; i < HumanTrait.MuscleCount; i++)
+                            {
+                                AddLinearKey(muscleCurves[i], time, humanPose.muscles[i]);
+                            }
                         }
 
-                        // Store current quaternion for next frame comparison
-                        previousRootQuaternion = rootRot;
+                        if (settings.includeBlendShapes)
+                        {
+                            foreach (var shape in motionDecoder.shapes)
+                            {
+                                if (blendShapeCurves.ContainsKey(shape.Key))
+                                {
+                                    var weight = Mathf.Round(Mathf.Clamp01(shape.Value) * 100 / 0.1f) * 0.1f;
+                                    AddLinearKey(blendShapeCurves[shape.Key], time, weight);
+                                }
+                            }
+                        }
 
-                        AddLinearKey(rootRotationCurves[0], time, rootRot.x);
-                        AddLinearKey(rootRotationCurves[1], time, rootRot.y);
-                        AddLinearKey(rootRotationCurves[2], time, rootRot.z);
-                        AddLinearKey(rootRotationCurves[3], time, rootRot.w);
+                        frameCount++;
+
+                        if (totalFrames > 0)
+                        {
+                            var progress = Mathf.Lerp(0.1f, 0.9f, (float)frameCount / totalFrames);
+                            progressCallback?.Invoke(progress, $"Processing frame {frameCount}/{totalFrames}");
+                        }
+                    }
+
+                    if (frameCount == 0)
+                    {
+                        Debug.LogError("No valid frames found in capture file");
+                        return null;
+                    }
+
+                    progressCallback?.Invoke(0.9f, "Finalizing animation...");
+                    Debug.Log($"Processed {frameCount} frames successfully");
+
+                    // Set animation curves
+                    if (settings.applyHumanPose)
+                    {
+                        animationClip.SetCurve("", typeof(Animator), "RootT.x", rootPositionCurves[0]);
+                        animationClip.SetCurve("", typeof(Animator), "RootT.y", rootPositionCurves[1]);
+                        animationClip.SetCurve("", typeof(Animator), "RootT.z", rootPositionCurves[2]);
+
+                        animationClip.SetCurve("", typeof(Animator), "RootQ.x", rootRotationCurves[0]);
+                        animationClip.SetCurve("", typeof(Animator), "RootQ.y", rootRotationCurves[1]);
+                        animationClip.SetCurve("", typeof(Animator), "RootQ.z", rootRotationCurves[2]);
+                        animationClip.SetCurve("", typeof(Animator), "RootQ.w", rootRotationCurves[3]);
 
                         for (int i = 0; i < HumanTrait.MuscleCount; i++)
                         {
-                            AddLinearKey(muscleCurves[i], time, humanPose.muscles[i]);
-                        }
-                    }
-
-                    if (settings.includeBlendShapes)
-                    {
-                        foreach (var shape in motionDecoder.shapes)
-                        {
-                            if (blendShapeCurves.ContainsKey(shape.Key))
+                            if (muscleCurves[i].keys.Length > 0)
                             {
-                                var weight = Mathf.Round(Mathf.Clamp01(shape.Value) * 100 / 0.1f) * 0.1f;
-                                AddLinearKey(blendShapeCurves[shape.Key], time, weight);
+                                var muscleName = GetCorrectMusclePropertyName(HumanTrait.MuscleName[i]);
+                                animationClip.SetCurve("", typeof(Animator), muscleName, muscleCurves[i]);
                             }
                         }
                     }
 
-                    frameCount++;
-                    
-                    if (totalFrames > 0)
+                    if (blendShapeCurves.Count > 0 && settings.shapeRenderer != null)
                     {
-                        var progress = Mathf.Lerp(0.1f, 0.9f, (float)frameCount / totalFrames);
-                        progressCallback?.Invoke(progress, $"Processing frame {frameCount}/{totalFrames}");
-                    }
-                }
+                        var rendererPath = AnimationUtility.CalculateTransformPath(settings.shapeRenderer.transform, animator.transform);
 
-                if (frameCount == 0)
-                {
-                    Debug.LogError("No valid frames found in capture file");
-                    return null;
-                }
-
-                progressCallback?.Invoke(0.9f, "Finalizing animation...");
-                Debug.Log($"Processed {frameCount} frames successfully");
-
-                // Set animation curves
-                if (settings.applyHumanPose)
-                {
-                    animationClip.SetCurve("", typeof(Animator), "RootT.x", rootPositionCurves[0]);
-                    animationClip.SetCurve("", typeof(Animator), "RootT.y", rootPositionCurves[1]);
-                    animationClip.SetCurve("", typeof(Animator), "RootT.z", rootPositionCurves[2]);
-
-                    animationClip.SetCurve("", typeof(Animator), "RootQ.x", rootRotationCurves[0]);
-                    animationClip.SetCurve("", typeof(Animator), "RootQ.y", rootRotationCurves[1]);
-                    animationClip.SetCurve("", typeof(Animator), "RootQ.z", rootRotationCurves[2]);
-                    animationClip.SetCurve("", typeof(Animator), "RootQ.w", rootRotationCurves[3]);
-
-                    for (int i = 0; i < HumanTrait.MuscleCount; i++)
-                    {
-                        if (muscleCurves[i].keys.Length > 0)
+                        foreach (var kvp in blendShapeCurves)
                         {
-                            var muscleName = GetCorrectMusclePropertyName(HumanTrait.MuscleName[i]);
-                            animationClip.SetCurve("", typeof(Animator), muscleName, muscleCurves[i]);
+                            if (kvp.Value.keys.Length > 0)
+                            {
+                                animationClip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), $"blendShape.{kvp.Key}", kvp.Value);
+                            }
                         }
                     }
-                }
 
-                if (blendShapeCurves.Count > 0 && settings.shapeRenderer != null)
-                {
-                    var rendererPath = AnimationUtility.CalculateTransformPath(settings.shapeRenderer.transform, animator.transform);
+                    animationClip.name = System.IO.Path.GetFileNameWithoutExtension(settings.outputPath);
 
-                    foreach (var kvp in blendShapeCurves)
+                    // Ensure parent directory exists
+                    var directory = System.IO.Path.GetDirectoryName(settings.outputPath);
+                    if (!System.IO.Directory.Exists(directory))
                     {
-                        if (kvp.Value.keys.Length > 0)
-                        {
-                            animationClip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), $"blendShape.{kvp.Key}", kvp.Value);
-                        }
+                        System.IO.Directory.CreateDirectory(directory);
+                    }
+
+                    // Check if asset already exists to avoid recreating .meta files
+                    var existingClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(settings.outputPath);
+                    if (existingClip != null)
+                    {
+                        // Overwrite existing asset content
+                        EditorUtility.CopySerialized(animationClip, existingClip);
+                        EditorUtility.SetDirty(existingClip);
+                        AssetDatabase.SaveAssets();
+                        return existingClip;
+                    }
+                    else
+                    {
+                        // Create new asset
+                        AssetDatabase.CreateAsset(animationClip, settings.outputPath);
+                        AssetDatabase.SaveAssets();
+                        return animationClip;
                     }
                 }
-
-                animationClip.name = System.IO.Path.GetFileNameWithoutExtension(settings.outputPath);
-
-                // Ensure parent directory exists
-                var directory = System.IO.Path.GetDirectoryName(settings.outputPath);
-                if (!System.IO.Directory.Exists(directory))
+                finally
                 {
-                    System.IO.Directory.CreateDirectory(directory);
-                }
-
-                // Check if asset already exists to avoid recreating .meta files
-                var existingClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(settings.outputPath);
-                if (existingClip != null)
-                {
-                    // Overwrite existing asset content
-                    EditorUtility.CopySerialized(animationClip, existingClip);
-                    EditorUtility.SetDirty(existingClip);
-                    AssetDatabase.SaveAssets();
-                    return existingClip;
-                }
-                else
-                {
-                    // Create new asset
-                    AssetDatabase.CreateAsset(animationClip, settings.outputPath);
-                    AssetDatabase.SaveAssets();
-                    return animationClip;
+                    Object.DestroyImmediate(targetAvatar.gameObject);
                 }
             }
         }

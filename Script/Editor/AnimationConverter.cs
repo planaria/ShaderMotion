@@ -248,7 +248,7 @@ namespace ShaderMotion
 
                     if (blendShapeCurves.Count > 0 && settings.shapeRenderer != null)
                     {
-                        var rendererPath = AnimationUtility.CalculateTransformPath(settings.shapeRenderer.transform, animator.transform);
+                        var rendererPath = AnimationUtility.CalculateTransformPath(settings.shapeRenderer.transform, settings.targetAvatar.transform);
 
                         foreach (var kvp in blendShapeCurves)
                         {

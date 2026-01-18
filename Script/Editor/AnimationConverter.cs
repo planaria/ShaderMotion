@@ -136,6 +136,11 @@ namespace ShaderMotion
 
                         Object.DestroyImmediate(inputTexture);
 
+                        if (RenderTexture.active == processedTexture)
+                        {
+                            RenderTexture.active = null;
+                        }
+
                         processedTexture.Release();
                         Object.DestroyImmediate(processedTexture);
 

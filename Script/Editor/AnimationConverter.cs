@@ -161,9 +161,7 @@ namespace ShaderMotion
                             poseHandler.SetHumanPose(ref humanPose);
 
                             var hipsPosition = motions[0].t;
-                            hipsPosition.y -= skeleton.humanScale;
-                            hipsPosition *= animator.humanScale;
-                            hipsPosition.y += animator.humanScale;
+                            hipsPosition *= skeleton.humanScale / motions[0].s;
 
                             var hipsTransform = animator.GetBoneTransform(HumanBodyBones.Hips);
                             hipsTransform.position = hipsPosition;

@@ -1,5 +1,9 @@
 # ShaderMotion
 
+This repository is a fork of the following repository.
+
+[https://gitlab.com/lox9973/ShaderMotion](https://gitlab.com/lox9973/ShaderMotion)
+
 ## A shader-based motion-to-video codec for humanoid avatar
 
 ShaderMotion is a motion-to-video codec for Unity humanoid avatar, whose core system is completely written in shader language HLSL. It is designed for streaming fullbody motion across VR platforms using popular live streaming platforms. The sender converts bone rotations of a humanoid avatar into video color blocks for transmission. The receiver converts color blocks back to bone rotations for motion playback, and allows the motion to be retargeted to a different avatar.
